@@ -1,4 +1,4 @@
-# NFS Mount Point Verifier (No R/W Test)
+# NFS Mount Point Verifier 
 
 ## Overview
 A streamlined Bash script for validating NFS mount points focusing on mount information and permissions verification. Ideal for system administrators managing storage cutovers or NFS configuration changes where access and permission validation is the primary concern.
