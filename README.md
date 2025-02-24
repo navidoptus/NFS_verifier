@@ -1,20 +1,19 @@
-# NFS Mount Point Verifier
+# NFS Mount Point Verifier (No R/W Test)
 
 ## Overview
-A Bash script for validating NFS mount points across multiple servers. Particularly useful for system administrators managing storage cutovers or NFS configuration changes.
+A streamlined Bash script for validating NFS mount points focusing on mount information and permissions verification. Ideal for system administrators managing storage cutovers or NFS configuration changes where access and permission validation is the primary concern.
 
 ## Key Features
-- Automated verification of multiple NFS mount points
+- Mount point and permission validation
 - CSV-based input for bulk server processing
-- Comprehensive mount point validation
-- Detailed reporting with state comparison
+- Detailed state comparison reporting
 - Error handling with graceful recovery
+- No read/write testing for improved performance
 
 ## Prerequisites
 - Bash shell environment
-- Standard Linux utilities (mount, stat, grep, sed, touch, rm, date)
+- Standard Linux utilities (mount, stat, grep, sed, date)
 - Write permissions in script directory
-- Read/write access to NFS mount points
 
 ## CSV Configuration
 The script requires a CSV file with the following fields:
@@ -27,40 +26,39 @@ db-server-03,/mnt/nfs_backup,/tmp/nfs_state_db03.txt
 ```
 
 ### Field Descriptions
-- **ServerName**: Unique server identifier
+- **ServerName**: Unique server identifier used in reporting
 - **MountPoint**: NFS mount point directory path
-- **StateFile**: Path for state information storage
+- **StateFile**: Path for storing state information
 
 ## Usage Instructions
 
 ### Script Setup
 1. Download the script:
    ```bash
-   curl -O nfs_mount_verifier_csv_input.sh
+   curl -O nfs_mount_verifier_no_rw_test.sh
    ```
 
 2. Set execution permissions:
    ```bash
-   chmod +x nfs_mount_verifier_csv_input.sh
+   chmod +x nfs_mount_verifier_no_rw_test.sh
    ```
 
 ### Capture Mode
 Run the script with --capture flag:
 ```bash
-./nfs_mount_verifier_csv_input.sh --capture
+./nfs_mount_verifier_no_rw_test.sh --capture
 ```
 
 The script will:
 1. Request CSV file path
 2. Validate mount point existence
 3. Capture mount details and permissions
-4. Perform read/write testing
-5. Save state information
+4. Save state information
 
 ### Verify Mode
 Execute with --verify flag:
 ```bash
-./nfs_mount_verifier_csv_input.sh --verify
+./nfs_mount_verifier_no_rw_test.sh --verify
 ```
 
 The script will:
@@ -79,7 +77,6 @@ Mount Information: Consistent
 Permissions:       Consistent
 Owner:             Consistent
 Group:             Consistent
-Read/Write Test:   Consistent
 ---------------------
 ```
 
@@ -89,7 +86,18 @@ The script generates `verification_report_<ServerName>.txt` containing:
 - Mount point details
 - State comparison results
 - Verification timestamps
-- Test outcomes
+
+## Verification Checks
+The script verifies:
+1. Mount Information
+   - Mount point existence
+   - NFS configuration
+   - Mount options
+
+2. Access Controls
+   - Directory permissions
+   - Owner settings
+   - Group settings
 
 ## Error Handling
 The script manages common issues:
@@ -97,12 +105,11 @@ The script manages common issues:
 - Missing CSV files
 - Non-existent mount points
 - Missing state files
-- Failed read/write tests
 
 ## Repository Structure
 ```
 .
-├── nfs_mount_verifier_csv_input.sh
+├── nfs_mount_verifier_no_rw_test.sh
 ├── README.md
 ├── servers.csv.example
 └── LICENSE
