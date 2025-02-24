@@ -35,18 +35,18 @@ db-server-03,/mnt/nfs_backup,/tmp/nfs_state_db03.txt
 ### Script Setup
 1. Download the script:
    ```bash
-   curl -O nfs_mount_verifier_no_rw_test.sh
+   curl -O nfs_validator.sh
    ```
 
 2. Set execution permissions:
    ```bash
-   chmod +x nfs_mount_verifier_no_rw_test.sh
+   chmod +x nfs_validator.sh
    ```
 
 ### Capture Mode
 Run the script with --capture flag:
 ```bash
-./nfs_mount_verifier_no_rw_test.sh --capture
+./nfs_validator.sh --capture
 ```
 
 The script will:
@@ -58,7 +58,7 @@ The script will:
 ### Verify Mode
 Execute with --verify flag:
 ```bash
-./nfs_mount_verifier_no_rw_test.sh --verify
+./nfs_validator.sh --verify
 ```
 
 The script will:
@@ -109,7 +109,7 @@ The script manages common issues:
 ## Repository Structure
 ```
 .
-├── nfs_mount_verifier_no_rw_test.sh
+├── nfs_validator.sh
 ├── README.md
 ├── servers.csv.example
 └── LICENSE
