@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script Name: nfs_mount_verifier_html_report.sh
-# Description: Verifies NFS mounts, generates HTML report with success rate.
+# Script Name: nfs_mount_verifier_remote.sh
+# Description: Verifies NFS mounts on remote servers via SSH, generates HTML report.
 # Author: Navid Rastegani
 # Email: navid.rastegani@optus.com.au
 
@@ -12,39 +12,52 @@
 # --- Usage Function ---
 usage() {
     echo "Usage: $0 {--capture|--verify}"
-    echo "  --capture          Capture state of NFS mounts (no report)."
-    echo "  --verify           Verify state and generate HTML report."
+    echo "  --capture          Capture pre-cutover state on remote servers (no report)."
+    echo "  --verify           Verify post-cutover state on remote servers and generate HTML report."
     echo " "
-    echo "CSV format: ServerName,MountPoint,StateFile (one server per line)"
+    echo "CSV format: ServerName,RemoteHost,SSHUser,MountPoint,StateFile (one server per line)"
+    echo "  - ServerName:  Descriptive name for the server (used in reports)."
+    echo "  - RemoteHost:  Hostname or IP address of the remote server."
+    echo "  - SSHUser:     Username for SSH access to the remote server."
+    echo "  - MountPoint:  NFS mount point path on the remote server."
+    echo "  - StateFile:   Path to the state file on the jump host (where this script runs)."
     exit 1
 }
 
-# --- Capture State Function (Unchanged from no_rw_test version) ---
+# --- Capture State Function (Remote Execution via SSH) ---
 capture_state() {
     local server_name="$1"
-    local mount_point="$2"
-    local state_file="$3"
+    local remote_host="$2"
+    local ssh_user="$3"
+    local mount_point="$4"
+    local state_file="$5"
 
-    echo "--- Capture Mode for Server: $server_name ---"
+    echo "--- PRE-CUTOVER CAPTURE: Server: $server_name (Remote Host: $remote_host) ---"
 
-    if [ ! -d "$mount_point" ]; then
-        echo "Error: Mount point '$mount_point' for '$server_name' does not exist."
+    # Check if mount point directory exists on the remote server
+    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "test -d '$mount_point'"; then
+        echo "Error: Mount point directory '$mount_point' for '$server_name' (Remote Host: $remote_host) does not exist or is not accessible."
         return 1
     fi
-    echo "Mount point '$mount_point' exists for '$server_name'."
+    echo "Mount point directory '$mount_point' exists on '$server_name' (Remote Host: $remote_host)."
 
-    mount_info=$(mount | grep "$mount_point")
+    # Capture mount information from the remote server
+    mount_info=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "mount | grep '$mount_point'")
     mount_info="${mount_info:-Not mounted}" # Handle empty mount_info
-    echo "Captured mount info for '$server_name'."
+    echo "Captured mount info (pre-cutover) from '$server_name' (Remote Host: $remote_host)."
 
-    permissions=$(stat -c "%a" "$mount_point")
-    owner=$(stat -c "%U" "$mount_point")
-    group=$(stat -c "%G" "$mount_point")
-    echo "Captured permissions for '$server_name'."
+    # Capture directory permissions, owner, and group from the remote server
+    permissions=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%a' '$mount_point'")
+    owner=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%U' '$mount_point'")
+    group=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%G' '$mount_point'")
+    echo "Captured permissions (pre-cutover) from '$server_name' (Remote Host: $remote_host)."
 
-    echo "Saving state to '$state_file' for '$server_name'..."
+    # Save state to file (on the jump host - where this script runs)
+    echo "Saving PRE-CUTOVER state to '$state_file' (on jump host) for '$server_name' (Remote Host: $remote_host)..."
     echo "Server Name:" > "$state_file"
     echo "$server_name" >> "$state_file"
+    echo "Remote Host:" >> "$state_file" # Added Remote Host to state file
+    echo "$remote_host" >> "$state_file" # Added Remote Host to state file
     echo "Mount Info:" >> "$state_file"
     echo "$mount_info" >> "$state_file"
     echo "Permissions:" >> "$state_file"
@@ -54,40 +67,48 @@ capture_state() {
     echo "Group:" >> "$state_file"
     echo "$group" >> "$state_file"
 
-    echo "State captured for '$server_name' and saved to '$state_file'."
+    echo "PRE-CUTOVER state captured for '$server_name' (Remote Host: $remote_host) and saved to '$state_file' (on jump host)."
     return 0
 }
 
 
-# --- Verify State Function (Modified to return statuses) ---
+# --- Verify State Function (Remote Execution via SSH) ---
 verify_state() {
     local server_name="$1"
-    local mount_point="$2"
-    local state_file="$3"
+    local remote_host="$2"
+    local ssh_user="$3"
+    local mount_point="$4"
+    local state_file="$5"
 
-    echo "--- Verify Mode for Server: $server_name ---"
+    echo "--- POST-CUTOVER VERIFICATION: Server: $server_name (Remote Host: $remote_host) ---"
 
     local REPORT_FILE="verification_report_${server_name}.txt" # Still create text reports
 
-    if [ ! -d "$mount_point" ]; then
-        echo "Error: Mount point '$mount_point' for '$server_name' does not exist."
+    # Check if mount point directory exists on the remote server
+    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "test -d '$mount_point'"; then
+        echo "Error: Mount point directory '$mount_point' for '$server_name' (Remote Host: $remote_host) does not exist or is not accessible."
         return 1
     fi
+    # Check if state file exists (on the jump host)
     if [ ! -f "$state_file" ]; then
-        echo "Error: State file '$state_file' not found for server '$server_name'."
+        echo "Error: State file '$state_file' not found (on jump host) for server '$server_name'. Did you run capture mode BEFORE cutover?"
         return 1
     fi
 
-    current_mount_info=$(mount | grep "$mount_point")
-    current_mount_info="${current_mount_info:-Not mounted}" # Handle empty current_mount_info
-    current_permissions=$(stat -c "%a" "$mount_point")
-    current_owner=$(stat -c "%U" "$mount_point")
-    current_group=$(stat -c "%G" "$mount_point")
+    # Capture current state from remote server via SSH
+    current_mount_info=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "mount | grep '$mount_point'")
+    current_mount_info="${current_mount_info:-Not mounted}"
+    current_permissions=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%a' '$mount_point'")
+    current_owner=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%U' '$mount_point'")
+    current_group=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$ssh_user@$remote_host" "stat -c '%G' '$mount_point'")
 
-    previous_mount_info=$(sed -n '4p' "$state_file")
-    previous_permissions=$(sed -n '6p' "$state_file")
-    previous_owner=$(sed -n '8p' "$state_file")
-    previous_group=$(sed -n '10p' "$state_file")
+    # Read previous state from state file (on jump host)
+    echo "Reading PRE-CUTOVER state from '$state_file' (on jump host) for '$server_name' (Remote Host: $remote_host)..."
+    previous_remote_host=$(sed -n '4p' "$state_file") # Line 4: Remote Host from state file
+    previous_mount_info=$(sed -n '6p' "$state_file")
+    previous_permissions=$(sed -n '8p' "$state_file")
+    previous_owner=$(sed -n '10p' "$state_file")
+    previous_group=$(sed -n '12p' "$state_file")
 
     # Initialize statuses
     local mount_status="FAIL"
@@ -116,42 +137,43 @@ verify_state() {
     fi
 
     # Generate TEXT report (still helpful for detailed info)
-    echo "Generating text report: '$REPORT_FILE' for '$server_name'..."
-    echo "NFS Mount Verification Report for Server: $server_name" > "$REPORT_FILE"
+    echo "Generating text report: '$REPORT_FILE' for '$server_name' (Remote Host: $remote_host)..."
+    echo "NFS Mount Verification Report (POST-CUTOVER) for Server: $server_name (Remote Host: $remote_host)" > "$REPORT_FILE"
     echo "------------------------------------" >> "$REPORT_FILE"
     echo "Server Name: $server_name" >> "$REPORT_FILE"
-    echo "Mount Point: $mount_point" >> "$REPORT_FILE"
-    echo "State File: $state_file" >> "$REPORT_FILE"
+    echo "Remote Host: $remote_host" >> "$REPORT_FILE" # Added Remote Host to report
+    echo "Mount Point (Remote): $mount_point" >> "$REPORT_FILE" # Clarified Remote
+    echo "State File (Pre-Cutover State - on jump host): $state_file" >> "$REPORT_FILE" # Clarified location
     echo "$(date)" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
 
     echo "--- Mount Information Check ---" >> "$REPORT_FILE"
-    echo "Previous: $(echo "$previous_mount_info" | tr -d '[:space:]')" >> "$REPORT_FILE"
-    echo "Current: $(echo "$current_mount_info" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "PRE-CUTOVER Mount Info: $(echo "$previous_mount_info" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "POST-CUTOVER Mount Info (Remote): $(echo "$current_mount_info" | tr -d '[:space:]')" >> "$REPORT_FILE" # Clarified Remote
     echo "Status: $mount_status" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
 
     echo "--- Permissions Check ---" >> "$REPORT_FILE"
-    echo "Previous: $(echo "$previous_permissions" | tr -d '[:space:]')" >> "$REPORT_FILE"
-    echo "Current: $(echo "$current_permissions" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "PRE-CUTOVER Permissions: $(echo "$previous_permissions" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "POST-CUTOVER Permissions (Remote): $(echo "$current_permissions" | tr -d '[:space:]')" >> "$REPORT_FILE" # Clarified Remote
     echo "Status: $permissions_status" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
 
     echo "--- Owner Check ---" >> "$REPORT_FILE"
-    echo "Previous: $(echo "$previous_owner" | tr -d '[:space:]')" >> "$REPORT_FILE"
-    echo "Current: $(echo "$current_owner" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "PRE-CUTOVER Owner: $(echo "$previous_owner" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "POST-CUTOVER Owner (Remote): $(echo "$current_owner" | tr -d '[:space:]')" >> "$REPORT_FILE" # Clarified Remote
     echo "Status: $owner_status" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
 
     echo "--- Group Check ---" >> "$REPORT_FILE"
-    echo "Previous: $(echo "$previous_group" | tr -d '[:space:]')" >> "$REPORT_FILE"
-    echo "Current: $(echo "$current_group" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "PRE-CUTOVER Group: $(echo "$previous_group" | tr -d '[:space:]')" >> "$REPORT_FILE"
+    echo "POST-CUTOVER Group (Remote): $(echo "$current_group" | tr -d '[:space:]')" >> "$REPORT_FILE" # Clarified Remote
     echo "Status: $group_status" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     echo "------------------------------------" >> "$REPORT_FILE"
-    echo "Text report saved to '$REPORT_FILE' for '$server_name'" >> "$REPORT_FILE"
+    echo "Text report (POST-CUTOVER Verification) saved to '$REPORT_FILE' for '$server_name' (Remote Host: $remote_host)" >> "$REPORT_FILE"
 
-    echo "Verification Summary for Server: $server_name"
+    echo "Verification Summary (POST-CUTOVER) for Server: $server_name (Remote Host: $remote_host)"
     echo "---------------------"
     echo "Mount Info:    $mount_status"
     echo "Permissions:   $permissions_status"
@@ -182,34 +204,36 @@ declare -a verification_results=()
 
 case "$MODE" in
     --capture)
-        echo "--- Batch Capture Mode ---"
-        while IFS=, read -r server_name mount_point state_file; do
-            if [ -n "$server_name" ] && [ -n "$mount_point" ]; then
-                capture_state "$server_name" "$mount_point" "$state_file"
+        echo "--- PRE-CUTOVER CAPTURE MODE STARTED (Remote Servers via SSH) ---"
+        while IFS=, read -r server_name remote_host ssh_user mount_point state_file; do
+            if [ -n "$server_name" ] && [ -n "$remote_host" ] && [ -n "$ssh_user" ] && [ -n "$mount_point" ]; then
+                echo "Processing server '$server_name' (Remote Host: $remote_host) for PRE-CUTOVER capture..."
+                capture_state "$server_name" "$remote_host" "$ssh_user" "$mount_point" "$state_file"
                 echo "----------------------"
             fi
         done < "$SERVERS_CSV_FILE"
-        echo "--- Capture Mode Finished ---"
+        echo "--- PRE-CUTOVER CAPTURE MODE FINISHED (Remote Servers via SSH) ---"
 
     ;;
     --verify)
-        echo "--- Batch Verify Mode ---"
-        while IFS=, read -r server_name mount_point state_file; do
-            if [ -n "$server_name" ] && [ -n "$mount_point" ]; then
-                result_string=$(verify_state "$server_name" "$mount_point" "$state_file")
+        echo "--- POST-CUTOVER VERIFICATION MODE STARTED (Remote Servers via SSH) ---"
+        while IFS=, read -r server_name remote_host ssh_user mount_point state_file; do
+            if [ -n "$server_name" ] && [ -n "$remote_host" ] && [ -n "$ssh_user" ] && [ -n "$mount_point" ]; then
+                echo "Processing server '$server_name' (Remote Host: $remote_host) for POST-CUTOVER verification..."
+                result_string=$(verify_state "$server_name" "$remote_host" "$ssh_user" "$mount_point" "$state_file")
                 verification_results+=("$result_string") # Add result string to array
                 echo "----------------------"
             fi
         done < "$SERVERS_CSV_FILE"
-        echo "--- Verify Mode Finished ---"
+        echo "--- POST-CUTOVER VERIFICATION MODE FINISHED (Remote Servers via SSH) ---"
 
         # Generate HTML Report
         HTML_REPORT_FILE="nfs_verification_report.html"
-        echo "Generating HTML Report: $HTML_REPORT_FILE"
+        echo "Generating POST-CUTOVER HTML Report (for Remote Servers): $HTML_REPORT_FILE"
 
         generate_html_report "$HTML_REPORT_FILE" "${verification_results[@]}"
 
-        echo "HTML Report saved to: $HTML_REPORT_FILE"
+        echo "POST-CUTOVER HTML Report (for Remote Servers) saved to: $HTML_REPORT_FILE"
 
     ;;
     *)
@@ -220,7 +244,7 @@ esac
 exit 0
 
 
-# --- Function to Generate HTML Report ---
+# --- Function to Generate HTML Report (Updated for Remote Context) ---
 generate_html_report() {
     local html_file="$1"
     local results_array=("${@:2}") # Array of results strings
@@ -231,7 +255,7 @@ generate_html_report() {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>NFS Mount Verification Report</title>
+    <title>NFS Mount Verification Report (Post-Cutover - Remote Servers)</title> # Updated title
     <style>
         body { font-family: sans-serif; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
@@ -244,10 +268,11 @@ generate_html_report() {
     </style>
 </head>
 <body>
-    <h1 class="report-title">NFS Mount Verification Report</h1>
+    <h1 class="report-title">NFS Mount Verification Report (Post-Cutover - Remote Servers)</h1> # Updated heading
     <div class="summary-box">
-        <h2>Verification Summary</h2>
-        <p>This report summarizes the NFS mount verification for servers listed in the CSV file.</p>
+        <h2>Post-Cutover Verification Summary (Remote Servers)</h2> # Updated summary heading
+        <p>This report summarizes the NFS mount verification performed AFTER the storage cutover for <b>remote servers</b> listed in the CSV file. It compares the current (post-cutover) configuration against the baseline captured BEFORE the cutover.</p> # Clarified for remote servers
+        <p><b>Note:</b> This report reflects the verification of NFS mount points on <b>remote servers accessed via SSH</b> from this jump host.</p> # Added important note about remote access
         <p><b>Author:</b> Navid Rastegani, <b>Email:</b> navid.rastegani@optus.com.au</p>
 HTML_HEADER
 
@@ -257,7 +282,7 @@ HTML_HEADER
             <thead>
                 <tr>
                     <th>Server Name</th>
-                    <th>Mount Info</th>
+                    <th>Remote Host</th> <th>Mount Info</th>
                     <th>Permissions</th>
                     <th>Owner</th>
                     <th>Group</th>
@@ -273,6 +298,7 @@ HTML_TABLE_HEADER
     for result_string in "${results_array[@]}"; do
         total_servers=$((total_servers + 1))
         IFS=, read -r server_name mount_status permissions_status owner_status group_status <<< "$result_string"
+        IFS=, read -r server_name remote_host <<< "$result_string" # Extract remote_host for HTML table
 
         local overall_status="PASS" # Assume PASS initially for each server
         if [[ "$mount_status" == "FAIL" || "$permissions_status" == "FAIL" || "$owner_status" == "FAIL" || "$group_status" == "FAIL" ]]; then
@@ -285,7 +311,7 @@ HTML_TABLE_HEADER
         cat >> "$html_file" <<HTML_TABLE_ROW
                 <tr>
                     <td>$server_name</td>
-                    <td class="${mount_status}">${mount_status}</td>
+                    <td>$remote_host</td> <td class="${mount_status}">${mount_status}</td>
                     <td class="${permissions_status}">${permissions_status}</td>
                     <td class="${owner_status}">${owner_status}</td>
                     <td class="${group_status}">${group_status}</td>
@@ -302,11 +328,11 @@ HTML_TABLE_ROW
     cat >> "$html_file" <<HTML_TABLE_FOOTER
             </tbody>
         </table>
-        <p><b>Overall Verification Success Rate:</b> <span style="font-size: 1.2em;">${success_rate_percentage}%</span> (${passed_servers} out of ${total_servers} servers passed all checks).</p>
+        <p><b>Overall Post-Cutover Verification Success Rate (Remote Servers):</b> <span style="font-size: 1.2em;">${success_rate_percentage}%</span> (${passed_servers} out of ${total_servers} servers passed all checks).</p> # Updated summary text
     </div>
 </body>
 </html>
 HTML_TABLE_FOOTER
 
-    echo "HTML report generated: $html_file"
+    echo "HTML report (POST-CUTOVER - Remote Servers) generated: $html_file" # Updated completion message
 }
