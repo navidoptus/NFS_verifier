@@ -1,35 +1,39 @@
-# NFS Mount Point Verifier 
+# NFS Mount Point Verifier
 
 ## Overview
-A Bash script for validating NFS mount points with HTML report generation capabilities. The script focuses on mount information and permissions verification, providing both detailed text reports and a consolidated HTML summary with success rates.
+A Bash script for validating NFS mount points on remote Linux servers from a central jump host. The script generates comprehensive HTML reports and is particularly useful for verifying NFS configurations during storage cutovers or system changes across distributed environments.
 
 ## Key Features
-- Mount point and permission validation
-- CSV-based input for bulk server processing
+- Remote NFS mount point verification via SSH
 - HTML report generation with success rate calculation
-- Individual text reports for detailed analysis
+- CSV-based input for bulk server processing
+- Detailed state comparison reporting
+- Pre and post-cutover verification workflow
 - Error handling with graceful recovery
-- No read/write testing for improved performance
 
 ## Prerequisites
 - Bash shell environment
-- Standard Linux utilities (mount, stat, grep, sed, date, awk)
-- Write permissions in script directory
+- Standard Linux utilities (mount, stat, grep, sed, date, ssh)
+- SSH access to remote servers
+- Write permissions on jump host
+- Web browser for HTML report viewing
 
 ## CSV Configuration
 The script requires a CSV file with the following fields:
 
 ```csv
-ServerName,MountPoint,StateFile
-webserver-01,/mnt/nfs_data,/tmp/nfs_state_web01.txt
-appserver-02,/mnt/nfs_logs,/tmp/nfs_state_app02.txt
-db-server-03,/mnt/nfs_backup,/tmp/nfs_state_db03.txt
+ServerName,RemoteHost,SSHUser,MountPoint,StateFile
+webserver-01,webserver-01.internal,nfs_admin,/mnt/nfs_data,/tmp/nfs_state_web01.txt
+appserver-02,10.0.10.50,ops_user,/mnt/nfs_logs,/tmp/nfs_state_app02.txt
+db-server-03,db-server.prod,backup_svc,/mnt/nfs_backup,/tmp/nfs_state_db03.txt
 ```
 
 ### Field Descriptions
 - **ServerName**: Unique server identifier used in reporting
+- **RemoteHost**: Hostname or IP of the remote server
+- **SSHUser**: Username for SSH connection
 - **MountPoint**: NFS mount point directory path
-- **StateFile**: Path for storing state information
+- **StateFile**: Path for storing state information (on jump host)
 
 ## Usage Instructions
 
@@ -44,7 +48,11 @@ db-server-03,/mnt/nfs_backup,/tmp/nfs_state_db03.txt
    chmod +x nfs_validator.sh
    ```
 
-### Capture Mode
+3. Configure SSH access:
+   - Set up SSH key-based authentication (recommended)
+   - Ensure SSHUser has required permissions on remote hosts
+
+### Pre-Cutover Capture Mode
 Run the script with --capture flag:
 ```bash
 ./nfs_validator.sh --capture
@@ -52,11 +60,12 @@ Run the script with --capture flag:
 
 The script will:
 1. Request CSV file path
-2. Validate mount point existence
-3. Capture mount details and permissions
-4. Save state information
+2. Connect to each remote server via SSH
+3. Validate mount point existence
+4. Capture mount details and permissions
+5. Save state information on jump host
 
-### Verify Mode
+### Post-Cutover Verify Mode
 Execute with --verify flag:
 ```bash
 ./nfs_validator.sh --verify
@@ -64,16 +73,17 @@ Execute with --verify flag:
 
 The script will:
 1. Request CSV file path
-2. Compare current state against saved state
-3. Generate individual text reports
-4. Create consolidated HTML report
-5. Display console summary
+2. Connect to remote servers via SSH
+3. Compare current state against saved state
+4. Generate individual text reports
+5. Create consolidated HTML report
+6. Display console summary
 
 ## Output Format
 
 ### Console Summary
 ```
-Verification Summary for Server: webserver-01
+Verification Summary for Server: webserver-01 (Remote Host: webserver-01.internal)
 ---------------------
 Mount Info:    PASS
 Permissions:   PASS
@@ -84,15 +94,16 @@ Group:         PASS
 
 ### Text Reports
 The script generates `verification_report_<ServerName>.txt` containing:
-- Server identification
+- Server and remote host identification
 - Mount point details
-- State comparison results
+- Pre and post-cutover state comparison
 - Verification timestamps
-- Detailed comparison of each check
+- Detailed comparison results
 
 ### HTML Report
 Generates `nfs_verification_report.html` featuring:
 - Tabulated results for all servers
+- Remote host information
 - Status indicators (PASS/FAIL) with colour coding
 - Overall success rate percentage
 - Total servers verified
@@ -112,11 +123,12 @@ The script verifies:
 
 ## Error Handling
 The script manages common issues:
+- SSH connection failures
 - Invalid script arguments
 - Missing CSV files
 - Non-existent mount points
 - Missing state files
-- Empty mount information
+- Authentication errors
 
 ## Repository Structure
 ```
