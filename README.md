@@ -1,18 +1,19 @@
 # NFS Mount Point Verifier 
 
 ## Overview
-A Bash script for validating NFS mount points focusing on mount information and permissions verification.
+A Bash script for validating NFS mount points with HTML report generation capabilities. The script focuses on mount information and permissions verification, providing both detailed text reports and a consolidated HTML summary with success rates.
 
 ## Key Features
 - Mount point and permission validation
 - CSV-based input for bulk server processing
-- Detailed state comparison reporting
+- HTML report generation with success rate calculation
+- Individual text reports for detailed analysis
 - Error handling with graceful recovery
 - No read/write testing for improved performance
 
 ## Prerequisites
 - Bash shell environment
-- Standard Linux utilities (mount, stat, grep, sed, date)
+- Standard Linux utilities (mount, stat, grep, sed, date, awk)
 - Write permissions in script directory
 
 ## CSV Configuration
@@ -64,8 +65,9 @@ Execute with --verify flag:
 The script will:
 1. Request CSV file path
 2. Compare current state against saved state
-3. Generate verification reports
-4. Display console summary
+3. Generate individual text reports
+4. Create consolidated HTML report
+5. Display console summary
 
 ## Output Format
 
@@ -73,19 +75,28 @@ The script will:
 ```
 Verification Summary for Server: webserver-01
 ---------------------
-Mount Information: Consistent
-Permissions:       Consistent
-Owner:             Consistent
-Group:             Consistent
+Mount Info:    PASS
+Permissions:   PASS
+Owner:         PASS
+Group:         PASS
 ---------------------
 ```
 
-### Detailed Reports
+### Text Reports
 The script generates `verification_report_<ServerName>.txt` containing:
 - Server identification
 - Mount point details
 - State comparison results
 - Verification timestamps
+- Detailed comparison of each check
+
+### HTML Report
+Generates `nfs_verification_report.html` featuring:
+- Tabulated results for all servers
+- Status indicators (PASS/FAIL) with colour coding
+- Overall success rate percentage
+- Total servers verified
+- Pass/fail statistics
 
 ## Verification Checks
 The script verifies:
@@ -105,6 +116,7 @@ The script manages common issues:
 - Missing CSV files
 - Non-existent mount points
 - Missing state files
+- Empty mount information
 
 ## Repository Structure
 ```
