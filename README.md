@@ -120,3 +120,7 @@ For issues or contributions, please use the GitHub repository's issue tracker.
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Author
+Navid Rastegani  
+Email: navid.rastegani@optus.com.au
